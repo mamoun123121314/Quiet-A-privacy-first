@@ -1,33 +1,29 @@
 # Quiet
 
-Quiet is a privacy-first, anonymous daily reset app for overwhelmed people.
+Quiet is a private, local-first daily reset app for people who want a calm way to check in without creating an account.
 
-The product is intentionally simple:
-- no sign-in required
-- no ads
-- no tracking
-- all data stays on the device by default
-- daily mood check-ins and calming routines
+## Product features
+- Mood, energy, and stress check-ins stored by local calendar date
+- Persistent check-in history, current streaks, and real trend summaries (no seeded/fabricated stats)
+- Daily reset checklist and gentle breathing guide
+- Configurable 5-, 10-, and 25-minute focus sessions with pause/resume and completion tracking
+- Daily private journal notes with history
+- Explicit JSON backup export and destructive local-data deletion controls
+- First-run onboarding and migration of data from earlier MVP versions
+- No authentication, analytics SDK, ads, or network service
 
-## Current MVP features
-- mood selection
-- energy and stress tracking
-- reset routine checklist
-- private journal notes
-- local persistence using AsyncStorage
-- small daily streak tracking
-- guided breathing mode
-- focus mode selection
-- tabbed app flow with onboarding and privacy screen
-
-## Run locally
+## Run
 
 ```bash
 npm install
 npm start
 ```
 
-Then open the project in Expo Go or a simulator.
+Run the pure data-logic tests with Node.js 18 or newer:
 
-## Product direction
-Quiet is meant to feel calm, respectful, and emotionally safe. It is designed for people who want one tiny daily ritual rather than another noisy app.
+```bash
+npm run test:data
+```
+
+## Privacy notes
+Quiet persists app data in AsyncStorage on this device. Exported backups are shared through the operating system and are outside the app's local protection. Removing the app may remove local data, depending on platform behavior. Quiet is a wellbeing aid, not a substitute for professional care.
