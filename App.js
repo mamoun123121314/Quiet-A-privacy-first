@@ -59,7 +59,7 @@ function formatLongDate(dateKey) {
 }
 
 export default function App() {
-  const [data, setData] = useState(emptyState);
+  const [data, setData] = useState(() => emptyState());
   const [screen, setScreen] = useState('today');
   const [todayKey, setTodayKey] = useState(localDateKey());
   const [ready, setReady] = useState(false);
@@ -71,7 +71,7 @@ export default function App() {
   const [focusComplete, setFocusComplete] = useState(false);
   const breathTimer = useRef(null);
   const focusTimer = useRef(null);
-  const activeEntry = data.entries[todayKey] || makeEntry(todayKey);
+  const activeEntry = data.entries[todayKey] || makeEntry(todayKey, data.entries[todayKey] || {});
 
   useEffect(() => {
     let mounted = true;
@@ -147,11 +147,12 @@ export default function App() {
 
   const updateToday = (patch) => {
     setData((current) => {
-      const existing = current.entries[todayKey] || makeEntry(todayKey);
+      const safeEntries = current.entries || {};
+      const existing = safeEntries[todayKey] || makeEntry(todayKey, safeEntries[todayKey] || {});
       return {
         ...current,
         entries: {
-          ...current.entries,
+          ...safeEntries,
           [todayKey]: { ...existing, ...patch, date: todayKey, updatedAt: new Date().toISOString() },
         },
       };
@@ -159,7 +160,12 @@ export default function App() {
   };
 
   const saveCheckin = () => {
-    updateToday({ mood: activeEntry.mood, energy: activeEntry.energy, stress: activeEntry.stress });
+    const nextEntry = activeEntry || makeEntry(todayKey);
+    updateToday({
+      mood: nextEntry.mood || 'calm',
+      energy: Number.isFinite(nextEntry.energy) ? nextEntry.energy : 50,
+      stress: Number.isFinite(nextEntry.stress) ? nextEntry.stress : 50,
+    });
     Alert.alert('Check-in saved', 'Today’s check-in is stored on this device.');
   };
 
@@ -181,7 +187,8 @@ export default function App() {
   };
 
   const recordFocusCompletion = () => {
-    updateToday({ focusSessions: activeEntry.focusSessions + 1 });
+    const currentFocusSessions = Number.isFinite(activeEntry?.focusSessions) ? activeEntry.focusSessions : 0;
+    updateToday({ focusSessions: currentFocusSessions + 1 });
     setFocusComplete(false);
     Alert.alert('Session complete', 'Nice work making space for one thing.');
   };
@@ -216,89 +223,93 @@ export default function App() {
     ]);
   };
 
-  const renderToday = () => (
-    <ScrollView contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
-      <View style={styles.topline}>
-        <View>
-          <Text style={styles.brand}>quiet</Text>
-          <Text style={styles.overline}>{formatLongDate(todayKey)}</Text>
+  const renderToday = () => {
+    const routine = activeEntry?.routineCompleted || [];
+    return (
+      <ScrollView contentContainerStyle={styles.page} showsVerticalScrollIndicator={false}>
+        <View style={styles.topline}>
+          <View>
+            <Text style={styles.brand}>quiet</Text>
+            <Text style={styles.overline}>{formatLongDate(todayKey)}</Text>
+          </View>
+          <View style={styles.localBadge}><Text style={styles.localBadgeText}>ON DEVICE</Text></View>
         </View>
-        <View style={styles.localBadge}><Text style={styles.localBadgeText}>ON DEVICE</Text></View>
-      </View>
 
-      <View style={styles.hero}>
-        <View style={[styles.moodOrb, { backgroundColor: selectedMood.tone }]}>
-          <Text style={styles.moodEmoji}>{selectedMood.emoji}</Text>
+        <View style={styles.hero}>
+          <View style={[styles.moodOrb, { backgroundColor: selectedMood.tone }]}>
+            <Text style={styles.moodEmoji}>{selectedMood.emoji}</Text>
+          </View>
+          <Text style={styles.eyebrow}>A moment for you</Text>
+          <Text style={styles.heroTitle}>{streak > 1 ? `${streak} days of showing up.` : 'How are you, really?'}</Text>
+          <Text style={styles.heroCopy}>{getInsight(activeEntry)}</Text>
+          <Pressable onPress={() => setScreen('reset')} style={styles.heroLink}>
+            <Text style={styles.heroLinkText}>Take a gentle reset  →</Text>
+          </Pressable>
         </View>
-        <Text style={styles.eyebrow}>A moment for you</Text>
-        <Text style={styles.heroTitle}>{streak > 1 ? `${streak} days of showing up.` : 'How are you, really?'}</Text>
-        <Text style={styles.heroCopy}>{getInsight(activeEntry)}</Text>
-        <Pressable onPress={() => setScreen('reset')} style={styles.heroLink}>
-          <Text style={styles.heroLinkText}>Take a gentle reset  →</Text>
+
+        <SectionHeading title="Check in" caption="There is no wrong answer." />
+        <View style={styles.moodGrid}>
+          {MOODS.map((mood) => {
+            const selected = activeEntry.mood === mood.key;
+            return (
+              <Pressable
+                key={mood.key}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => updateToday({ mood: mood.key })}
+                style={[styles.moodTile, selected && { backgroundColor: mood.tone, borderColor: mood.tone }]}
+              >
+                <Text style={styles.moodTileEmoji}>{mood.emoji}</Text>
+                <Text style={styles.moodTileLabel}>{mood.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={styles.card}>
+          <SectionHeading title="Your inner weather" caption="A quick estimate, not a score." />
+          <Metric label="Energy" value={activeEntry.energy} color="#76A990" onChange={(energy) => updateToday({ energy })} />
+          <Metric label="Stress" value={activeEntry.stress} color="#E6A28C" onChange={(stress) => updateToday({ stress })} />
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.rowBetween}>
+            <SectionHeading title="Small reset" caption="Choose what feels doable." />
+            <Text style={styles.countBadge}>{routine.length}/{ROUTINE_STEPS.length}</Text>
+          </View>
+          {ROUTINE_STEPS.map((step) => {
+            const done = routine.includes(step.id);
+            return (
+              <Pressable
+                key={step.id}
+                onPress={() => {
+                  const next = done
+                    ? routine.filter((item) => item !== step.id)
+                    : [...routine, step.id];
+                  updateToday({ routineCompleted: next });
+                }}
+                style={styles.routineRow}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: done }}
+              >
+                <View style={[styles.checkbox, done && styles.checkboxDone]}>{done && <Text style={styles.checkmark}>✓</Text>}</View>
+                <Text style={[styles.routineLabel, done && styles.routineComplete]}>{step.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <Pressable style={styles.primaryButton} onPress={saveCheckin}>
+          <Text style={styles.primaryButtonText}>Save today’s check-in</Text>
         </Pressable>
-      </View>
-
-      <SectionHeading title="Check in" caption="There is no wrong answer." />
-      <View style={styles.moodGrid}>
-        {MOODS.map((mood) => {
-          const selected = activeEntry.mood === mood.key;
-          return (
-            <Pressable
-              key={mood.key}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              onPress={() => updateToday({ mood: mood.key })}
-              style={[styles.moodTile, selected && { backgroundColor: mood.tone, borderColor: mood.tone }]}
-            >
-              <Text style={styles.moodTileEmoji}>{mood.emoji}</Text>
-              <Text style={styles.moodTileLabel}>{mood.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      <View style={styles.card}>
-        <SectionHeading title="Your inner weather" caption="A quick estimate, not a score." />
-        <Metric label="Energy" value={activeEntry.energy} color="#76A990" onChange={(energy) => updateToday({ energy })} />
-        <Metric label="Stress" value={activeEntry.stress} color="#E6A28C" onChange={(stress) => updateToday({ stress })} />
-      </View>
-
-      <View style={styles.card}>
-        <View style={styles.rowBetween}>
-          <SectionHeading title="Small reset" caption="Choose what feels doable." />
-          <Text style={styles.countBadge}>{activeEntry.routineCompleted.length}/{ROUTINE_STEPS.length}</Text>
-        </View>
-        {ROUTINE_STEPS.map((step) => {
-          const done = activeEntry.routineCompleted.includes(step.id);
-          return (
-            <Pressable
-              key={step.id}
-              onPress={() => {
-                const next = done
-                  ? activeEntry.routineCompleted.filter((item) => item !== step.id)
-                  : [...activeEntry.routineCompleted, step.id];
-                updateToday({ routineCompleted: next });
-              }}
-              style={styles.routineRow}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: done }}
-            >
-              <View style={[styles.checkbox, done && styles.checkboxDone]}>{done && <Text style={styles.checkmark}>✓</Text>}</View>
-              <Text style={[styles.routineLabel, done && styles.routineComplete]}>{step.label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      <Pressable style={styles.primaryButton} onPress={saveCheckin}>
-        <Text style={styles.primaryButtonText}>Save today’s check-in</Text>
-      </Pressable>
-      <Text style={styles.footnote}>Your check-ins are private and stay on this device.</Text>
-    </ScrollView>
-  );
+        <Text style={styles.footnote}>Your check-ins are private and stay on this device.</Text>
+      </ScrollView>
+    );
+  };
 
   const renderInsights = () => {
     const maxValue = Math.max(100, ...week.map((day) => day.entry?.energy || 0));
+    const sortedEntries = Object.values(data.entries || {}).sort((a, b) => b.date.localeCompare(a.date));
     return (
       <ScrollView contentContainerStyle={styles.page}>
         <Text style={styles.screenTitle}>Your patterns</Text>
@@ -331,9 +342,9 @@ export default function App() {
 
         <View style={styles.card}>
           <SectionHeading title="Recent check-ins" caption="Your history stays on this device." />
-          {Object.values(data.entries).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7).length === 0 ? (
+          {sortedEntries.length === 0 ? (
             <Text style={styles.emptyText}>Your first check-in will appear here. No streaks to keep up with—just a record for you.</Text>
-          ) : Object.values(data.entries).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7).map((entry) => {
+          ) : sortedEntries.slice(0, 7).map((entry) => {
             const mood = MOODS.find((item) => item.key === entry.mood) || MOODS[0];
             return (
               <View key={entry.date} style={styles.historyRow}>
@@ -413,7 +424,7 @@ export default function App() {
   );
 
   const renderJournal = () => {
-    const notes = Object.values(data.entries)
+    const notes = Object.values(data.entries || {})
       .filter((entry) => entry.note && entry.note.trim())
       .sort((a, b) => b.date.localeCompare(a.date));
     return (
@@ -422,7 +433,7 @@ export default function App() {
           <Text style={styles.screenTitle}>Your notes</Text>
           <Text style={styles.screenSubtitle}>A private space to put thoughts down. Saved automatically on this device.</Text>
           <TextInput
-            value={activeEntry.note}
+            value={activeEntry.note || ''}
             onChangeText={(note) => updateToday({ note })}
             placeholder="What is taking up space in your mind?"
             placeholderTextColor="#8A8F8D"
@@ -638,3 +649,4 @@ const styles = StyleSheet.create({
   onboardingPrivacyTitle: { color: '#315747', fontSize: 14, fontWeight: '700' },
   onboardingPrivacyCopy: { color: '#63736A', fontSize: 13, lineHeight: 19, marginTop: 6 },
 });
+
