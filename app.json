@@ -1,0 +1,25 @@
+{
+  "name": "Quiet",
+  "slug": "quiet-app",
+  "version": "1.0.0",
+  "orientation": "portrait",
+  "userInterfaceStyle": "light",
+  "splash": {
+    "backgroundColor": "#F4EFEA"
+  },
+  "assetBundlePatterns": [
+    "**/*"
+  ],
+  "ios": {
+    "supportsTablet": true
+  },
+  "android": {
+    "adaptiveIcon": {
+      "backgroundColor": "#F4EFEA"
+    }
+  },
+  "web": {
+    "bundler": "metro"
+  },
+  "plugins": []
+}
