@@ -17,6 +17,7 @@ The product is intentionally simple:
 - local persistence using AsyncStorage
 - small daily streak tracking
 - guided breathing mode
+- focus mode selection
 - tabbed app flow with onboarding and privacy screen
 
 ## Run locally

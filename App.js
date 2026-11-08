@@ -11,9 +11,12 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Share,
+  Alert,
 } from 'react-native';
 
-const storageKey = 'quiet-state-v2';
+const storageKey = 'quiet-state-v3';
+
 const tabs = [
   { key: 'home', label: 'Home' },
   { key: 'breathe', label: 'Breathe' },
@@ -27,6 +30,12 @@ const moodOptions = [
   { key: 'tired', label: 'Tired', emoji: '☾', tone: '#D8E1F0' },
   { key: 'stressed', label: 'Stressed', emoji: '⚡', tone: '#F7B3A8' },
   { key: 'overwhelmed', label: 'Overwhelmed', emoji: '✦', tone: '#D9C4E8' },
+];
+
+const focusModes = [
+  { key: 'clear', label: 'Clear head', minutes: 10 },
+  { key: 'focus', label: 'Deep work', minutes: 25 },
+  { key: 'rest', label: 'Reset', minutes: 5 },
 ];
 
 const routineSteps = [
@@ -47,6 +56,7 @@ const defaultState = {
   lastCheckin: null,
   totalCheckins: 12,
   onboardingSeen: false,
+  focusMode: 'clear',
 };
 
 const breathSequence = [
@@ -74,7 +84,7 @@ export default function App() {
   const [breathScale, setBreathScale] = useState(1);
   const [breathStarted, setBreathStarted] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const intervalRef = useRef(null);
+  const timeoutRef = useRef(null);
 
   useEffect(() => {
     const load = async () => {
@@ -107,16 +117,17 @@ export default function App() {
     if (!breathStarted) return;
     const step = breathSequence[breathIndex];
     setBreathScale(step.scale);
-    intervalRef.current = setTimeout(() => {
+    timeoutRef.current = setTimeout(() => {
       setBreathIndex((previous) => (previous + 1) % breathSequence.length);
     }, step.duration);
 
     return () => {
-      if (intervalRef.current) clearTimeout(intervalRef.current);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
   }, [breathStarted, breathIndex]);
 
   const activeMood = moodOptions.find((option) => option.key === state.mood) || moodOptions[0];
+  const activeFocus = focusModes.find((mode) => mode.key === state.focusMode) || focusModes[0];
 
   const insightText = useMemo(() => {
     if (state.stress > 65) return 'Your day feels crowded. Keep the next step small and simple.';
@@ -158,14 +169,24 @@ export default function App() {
   };
 
   const resetData = () => {
-    setState({ ...defaultState, onboardingSeen: true });
+    setState({ ...defaultState, onboardingSeen: true, focusMode: 'clear' });
     setScreen('home');
+    Alert.alert('Quiet reset', 'Your local data was cleared.');
   };
 
   const finishOnboarding = () => {
     setState((current) => ({ ...current, onboardingSeen: true }));
     setShowOnboarding(false);
     setScreen('home');
+  };
+
+  const exportJournal = async () => {
+    const text = state.journal.trim() || 'No journal entry yet.';
+    try {
+      await Share.share({ message: `Quiet note\n\n${text}` });
+    } catch (error) {
+      Alert.alert('Could not export', 'Sharing is unavailable on this device.');
+    }
   };
 
   const currentBreath = breathSequence[breathIndex];
@@ -191,6 +212,26 @@ export default function App() {
           <Text style={styles.heroMood}>{activeMood.label}</Text>
           <Text style={styles.heroSummary}>{insightText}</Text>
         </View>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Focus mode</Text>
+        <View style={styles.focusRow}>
+          {focusModes.map((mode) => {
+            const selected = state.focusMode === mode.key;
+            return (
+              <Pressable
+                key={mode.key}
+                onPress={() => setState((current) => ({ ...current, focusMode: mode.key }))}
+                style={[styles.focusChip, selected && styles.focusChipActive]}
+              >
+                <Text style={[styles.focusChipText, selected && styles.focusChipTextActive]}>{mode.label}</Text>
+                <Text style={[styles.focusChipMeta, selected && styles.focusChipTextActive]}>{mode.minutes}m</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={styles.focusSummary}>Suggested: {activeFocus.label} for {activeFocus.minutes} minutes.</Text>
       </View>
 
       <View style={styles.card}>
@@ -303,7 +344,14 @@ export default function App() {
         <Pressable style={styles.primaryButton} onPress={() => setBreathStarted(true)}>
           <Text style={styles.primaryButtonText}>Start breathing</Text>
         </Pressable>
-        <Pressable style={styles.secondaryButton} onPress={() => { setBreathStarted(false); setBreathIndex(0); setBreathScale(1); }}>
+        <Pressable
+          style={styles.secondaryButton}
+          onPress={() => {
+            setBreathStarted(false);
+            setBreathIndex(0);
+            setBreathScale(1);
+          }}
+        >
           <Text style={styles.secondaryButtonText}>Reset</Text>
         </Pressable>
       </View>
@@ -327,6 +375,10 @@ export default function App() {
         numberOfLines={8}
         style={styles.textArea}
       />
+
+      <Pressable style={styles.secondaryButton} onPress={exportJournal}>
+        <Text style={styles.secondaryButtonText}>Export note</Text>
+      </Pressable>
     </KeyboardAvoidingView>
   );
 
@@ -500,6 +552,38 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E7DFD8',
     marginBottom: 18,
+  },
+  focusRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  focusChip: {
+    flex: 1,
+    backgroundColor: '#F4F0ED',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E3D9D1',
+    padding: 12,
+  },
+  focusChipActive: {
+    backgroundColor: '#DDEADB',
+    borderColor: '#C6D9C7',
+  },
+  focusChipText: {
+    color: '#2C3532',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  focusChipMeta: {
+    color: '#5F6965',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  focusSummary: {
+    marginTop: 12,
+    color: '#53615D',
+    fontSize: 13,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -810,6 +894,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 10,
     fontWeight: '600',
+  },
+  focusChipTextActive: {
+    color: '#1E332F',
   },
 });
 
