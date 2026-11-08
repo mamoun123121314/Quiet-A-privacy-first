@@ -21,6 +21,12 @@ const FOCUS_MODES = [
   { key: 'deep', label: 'Deep focus', seconds: 25 * 60 },
 ];
 
+function clampNumber(value, fallback, min, max) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(max, Math.max(min, numeric));
+}
+
 function localDateKey(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -37,44 +43,58 @@ function emptyState() {
   };
 }
 
+function sanitizeEntry(date, rawEntry = {}) {
+  const entry = rawEntry && typeof rawEntry === 'object' ? rawEntry : {};
+  const mood = MOODS.some((item) => item.key === entry.mood) ? entry.mood : 'calm';
+  const energy = clampNumber(entry.energy, 50, 0, 100);
+  const stress = clampNumber(entry.stress, 50, 0, 100);
+  const note = typeof entry.note === 'string' ? entry.note : '';
+  const routineCompleted = Array.isArray(entry.routineCompleted)
+    ? entry.routineCompleted.filter((id) => ROUTINE_STEPS.some((step) => step.id === id))
+    : [];
+  const focusSessions = Number.isFinite(entry.focusSessions)
+    ? Math.max(0, Number(entry.focusSessions))
+    : 0;
+  const updatedAt = typeof entry.updatedAt === 'string' ? entry.updatedAt : new Date().toISOString();
+
+  return {
+    date,
+    mood,
+    energy,
+    stress,
+    note,
+    routineCompleted,
+    focusSessions,
+    updatedAt,
+  };
+}
+
 function normalizeState(input) {
   const base = emptyState();
   if (!input || typeof input !== 'object') return base;
 
-  // Migrate the first MVP's single-day fields into a real date-keyed history.
-  const entries = input.entries && typeof input.entries === 'object' ? { ...input.entries } : {};
-  if (input.lastCheckin && !entries[input.lastCheckin]) {
-    entries[input.lastCheckin] = {
+  const entries = {};
+  const rawEntries = input.entries && typeof input.entries === 'object' && !Array.isArray(input.entries)
+    ? input.entries
+    : {};
+
+  Object.keys(rawEntries).forEach((date) => {
+    if (!date || typeof rawEntries[date] !== 'object') return;
+    entries[date] = sanitizeEntry(date, rawEntries[date]);
+  });
+
+  if (input.lastCheckin && typeof input.lastCheckin === 'string' && !entries[input.lastCheckin]) {
+    entries[input.lastCheckin] = sanitizeEntry(input.lastCheckin, {
       date: input.lastCheckin,
-      mood: input.mood || 'calm',
-      energy: Number.isFinite(input.energy) ? input.energy : 50,
-      stress: Number.isFinite(input.stress) ? input.stress : 50,
-      note: typeof input.journal === 'string' ? input.journal : '',
-      routineCompleted: Array.isArray(input.routineCompleted) ? input.routineCompleted : [],
+      mood: input.mood,
+      energy: input.energy,
+      stress: input.stress,
+      note: input.journal,
+      routineCompleted: input.routineCompleted,
       focusSessions: 0,
       updatedAt: new Date().toISOString(),
-    };
+    });
   }
-
-  Object.keys(entries).forEach((date) => {
-    const entry = entries[date];
-    if (!entry || typeof entry !== 'object') {
-      delete entries[date];
-      return;
-    }
-    entries[date] = {
-      date,
-      mood: MOODS.some((item) => item.key === entry.mood) ? entry.mood : 'calm',
-      energy: Math.max(0, Math.min(100, Number.isFinite(entry.energy) ? entry.energy : 50)),
-      stress: Math.max(0, Math.min(100, Number.isFinite(entry.stress) ? entry.stress : 50)),
-      note: typeof entry.note === 'string' ? entry.note : '',
-      routineCompleted: Array.isArray(entry.routineCompleted)
-        ? entry.routineCompleted.filter((id) => ROUTINE_STEPS.some((step) => step.id === id))
-        : [],
-      focusSessions: Number.isFinite(entry.focusSessions) ? Math.max(0, entry.focusSessions) : 0,
-      updatedAt: typeof entry.updatedAt === 'string' ? entry.updatedAt : new Date().toISOString(),
-    };
-  });
 
   return {
     ...base,
@@ -87,12 +107,14 @@ function normalizeState(input) {
 function makeEntry(date, prior = {}) {
   return {
     date,
-    mood: prior.mood || 'calm',
-    energy: Number.isFinite(prior.energy) ? prior.energy : 50,
-    stress: Number.isFinite(prior.stress) ? prior.stress : 50,
+    mood: MOODS.some((item) => item.key === prior.mood) ? prior.mood : 'calm',
+    energy: clampNumber(prior.energy, 50, 0, 100),
+    stress: clampNumber(prior.stress, 50, 0, 100),
     note: typeof prior.note === 'string' ? prior.note : '',
-    routineCompleted: Array.isArray(prior.routineCompleted) ? prior.routineCompleted : [],
-    focusSessions: Number.isFinite(prior.focusSessions) ? prior.focusSessions : 0,
+    routineCompleted: Array.isArray(prior.routineCompleted)
+      ? prior.routineCompleted.filter((id) => ROUTINE_STEPS.some((step) => step.id === id))
+      : [],
+    focusSessions: Number.isFinite(prior.focusSessions) ? Math.max(0, Number(prior.focusSessions)) : 0,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -137,9 +159,9 @@ function summarize(entries) {
   if (!total) return { total: 0, averageEnergy: null, averageStress: null, focusSessions: 0 };
   return {
     total,
-    averageEnergy: Math.round(values.reduce((sum, item) => sum + item.energy, 0) / total),
-    averageStress: Math.round(values.reduce((sum, item) => sum + item.stress, 0) / total),
-    focusSessions: values.reduce((sum, item) => sum + item.focusSessions, 0),
+    averageEnergy: Math.round(values.reduce((sum, item) => sum + (Number.isFinite(item.energy) ? item.energy : 50), 0) / total),
+    averageStress: Math.round(values.reduce((sum, item) => sum + (Number.isFinite(item.stress) ? item.stress : 50), 0) / total),
+    focusSessions: values.reduce((sum, item) => sum + (Number.isFinite(item.focusSessions) ? Math.max(0, Number(item.focusSessions)) : 0), 0),
   };
 }
 
