@@ -9,13 +9,15 @@ The product is intentionally simple:
 - all data stays on the device by default
 - daily mood check-ins and calming routines
 
-## What the MVP includes
+## Current MVP features
 - mood selection
 - energy and stress tracking
 - reset routine checklist
 - private journal notes
 - local persistence using AsyncStorage
 - small daily streak tracking
+- guided breathing mode
+- tabbed app flow with onboarding and privacy screen
 
 ## Run locally
 
