@@ -12,11 +12,11 @@ import {
 } from 'react-native';
 
 const moodOptions = [
-  { key: 'calm', label: 'Calm', emoji: '◌', tone: '#A5D6A7' },
-  { key: 'happy', label: 'Happy', emoji: '☺', tone: '#FFD166' },
-  { key: 'tired', label: 'Tired', emoji: '☾', tone: '#B0BEC5' },
-  { key: 'stressed', label: 'Stressed', emoji: '⚡', tone: '#FF8A80' },
-  { key: 'overwhelmed', label: 'Overwhelmed', emoji: '✦', tone: '#CE93D8' },
+  { key: 'calm', label: 'Calm', emoji: '◌', tone: '#A9D5C2' },
+  { key: 'happy', label: 'Happy', emoji: '☺', tone: '#FFD7A8' },
+  { key: 'tired', label: 'Tired', emoji: '☾', tone: '#D8E1F0' },
+  { key: 'stressed', label: 'Stressed', emoji: '⚡', tone: '#F7B3A8' },
+  { key: 'overwhelmed', label: 'Overwhelmed', emoji: '✦', tone: '#D9C4E8' },
 ];
 
 const routineSteps = [
@@ -27,7 +27,7 @@ const routineSteps = [
   'Put your phone down for 2 minutes',
 ];
 
-const storageKey = 'quiet-daily-state';
+const storageKey = 'quiet-state-v1';
 
 const defaultState = {
   mood: 'calm',
@@ -37,15 +37,22 @@ const defaultState = {
   routineCompleted: [],
   streak: 3,
   lastCheckin: null,
+  totalCheckins: 12,
 };
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+function formatDateLabel(dateString) {
+  if (!dateString) return 'No check-in yet';
+  const date = new Date(dateString);
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 export default function App() {
   const [state, setState] = useState(defaultState);
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     const loadState = async () => {
@@ -56,9 +63,9 @@ export default function App() {
           setState({ ...defaultState, ...parsed });
         }
       } catch (error) {
-        console.warn('Failed to read local Quiet state', error);
+        console.warn('Quiet load failed:', error);
       } finally {
-        setIsLoaded(true);
+        setReady(true);
       }
     };
 
@@ -66,15 +73,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!ready) return;
     AsyncStorage.setItem(storageKey, JSON.stringify(state)).catch(() => {});
-  }, [state, isLoaded]);
+  }, [state, ready]);
 
-  const summaryText = useMemo(() => {
-    if (state.stress > 60) return 'Your day feels full. Keep the next step small.';
-    if (state.energy < 40) return 'Low energy today — protect your attention and rest.';
-    if (state.mood === 'happy') return 'Good momentum. Keep the calm going.';
-    return 'Steady pace. One gentle win is enough.';
+  const activeMood = moodOptions.find((option) => option.key === state.mood) || moodOptions[0];
+
+  const insightText = useMemo(() => {
+    if (state.stress > 65) return 'Your day feels crowded. The next step is only one small action.';
+    if (state.energy < 35) return 'Low energy today. Ease the pace and protect your attention.';
+    if (state.mood === 'happy') return 'Good momentum. Stay gentle and keep the rhythm light.';
+    return 'Steady pace. One calm win is enough for today.';
   }, [state.energy, state.mood, state.stress]);
 
   const toggleRoutineStep = (stepText) => {
@@ -89,11 +98,13 @@ export default function App() {
     });
   };
 
-  const updateMetric = (type, direction) => {
+  const updateMetric = (field, direction) => {
     setState((current) => {
       const delta = direction === 'up' ? 5 : -5;
-      const value = clamp(current[type] + delta, 0, 100);
-      return { ...current, [type]: value };
+      return {
+        ...current,
+        [field]: clamp(current[field] + delta, 0, 100),
+      };
     });
   };
 
@@ -102,43 +113,46 @@ export default function App() {
     setState((current) => ({
       ...current,
       lastCheckin: today,
-      streak: current.streak + 1,
+      totalCheckins: current.totalCheckins + 1,
+      streak: current.lastCheckin === today ? current.streak : current.streak + 1,
     }));
   };
-
-  const activeMood = moodOptions.find((option) => option.key === state.mood) || moodOptions[0];
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="dark" />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.headerWrap}>
-          <Text style={styles.kicker}>quiet</Text>
-          <Text style={styles.title}>Your day, your pace.</Text>
-          <Text style={styles.subtitle}>Private. Calm. No sign-in required.</Text>
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.brand}>quiet</Text>
+            <Text style={styles.subBrand}>private reset</Text>
+          </View>
+          <View style={styles.privatePill}>
+            <Text style={styles.privateText}>local only</Text>
+          </View>
         </View>
 
         <View style={styles.heroCard}>
-          <View style={styles.moodBubble}>
+          <View style={[styles.moodCircle, { backgroundColor: activeMood.tone }]}>
             <Text style={styles.moodEmoji}>{activeMood.emoji}</Text>
           </View>
-          <View style={styles.heroMeta}>
-            <Text style={styles.heroLabel}>Current mood</Text>
+          <View style={styles.heroTextWrap}>
+            <Text style={styles.heroLabel}>current mood</Text>
             <Text style={styles.heroMood}>{activeMood.label}</Text>
-            <Text style={styles.heroSummary}>{summaryText}</Text>
+            <Text style={styles.heroSummary}>{insightText}</Text>
           </View>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>How are you feeling?</Text>
-          <View style={styles.moodsGrid}>
+          <View style={styles.moodGrid}>
             {moodOptions.map((option) => {
-              const isSelected = state.mood === option.key;
+              const selected = state.mood === option.key;
               return (
                 <Pressable
                   key={option.key}
                   onPress={() => setState((current) => ({ ...current, mood: option.key }))}
-                  style={[styles.moodOption, isSelected && { backgroundColor: option.tone }]}
+                  style={[styles.moodOption, selected && { backgroundColor: option.tone }]}
                 >
                   <Text style={styles.moodChoiceEmoji}>{option.emoji}</Text>
                   <Text style={styles.moodChoiceLabel}>{option.label}</Text>
@@ -149,7 +163,11 @@ export default function App() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Energy check</Text>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Energy check</Text>
+            <Text style={styles.metaBadge}>{state.streak} day streak</Text>
+          </View>
+
           <View style={styles.metricRow}>
             <Text style={styles.metricLabel}>Energy</Text>
             <View style={styles.metricControls}>
@@ -159,7 +177,7 @@ export default function App() {
             </View>
           </View>
           <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${state.energy}%`, backgroundColor: '#7DBEA8' }]} />
+            <View style={[styles.progressFill, { width: `${state.energy}%`, backgroundColor: '#7FB69B' }]} />
           </View>
 
           <View style={styles.metricRow}>
@@ -171,22 +189,23 @@ export default function App() {
             </View>
           </View>
           <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${state.stress}%`, backgroundColor: '#F3B29D' }]} />
+            <View style={[styles.progressFill, { width: `${state.stress}%`, backgroundColor: '#F0B29B' }]} />
           </View>
         </View>
 
         <View style={styles.card}>
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>Reset routine</Text>
-            <Text style={styles.streakText}>{state.streak} day streak</Text>
+            <Text style={styles.metaBadge}>{state.routineCompleted.length}/{routineSteps.length}</Text>
           </View>
+
           {routineSteps.map((step) => {
             const done = state.routineCompleted.includes(step);
             return (
               <Pressable
                 key={step}
                 onPress={() => toggleRoutineStep(step)}
-                style={[styles.routineItem, done && styles.routineCompleted]}
+                style={[styles.routineItem, done && styles.routineDoneItem]}
               >
                 <View style={[styles.checkCircle, done && styles.checkCircleDone]}>
                   {done ? <Text style={styles.checkMark}>✓</Text> : null}
@@ -202,12 +221,23 @@ export default function App() {
           <TextInput
             value={state.journal}
             onChangeText={(text) => setState((current) => ({ ...current, journal: text }))}
-            style={styles.input}
             placeholder="What needs less weight today?"
+            placeholderTextColor="#8A8F8D"
             multiline
-            numberOfLines={4}
-            placeholderTextColor="#8E8A86"
+            numberOfLines={5}
+            style={styles.input}
           />
+        </View>
+
+        <View style={styles.statsRow}>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>last check-in</Text>
+            <Text style={styles.statValue}>{formatDateLabel(state.lastCheckin)}</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statLabel}>total check-ins</Text>
+            <Text style={styles.statValue}>{state.totalCheckins}</Text>
+          </View>
         </View>
 
         <Pressable style={styles.primaryButton} onPress={completeCheckin}>
@@ -221,222 +251,265 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F4EFEA',
+    backgroundColor: '#F3EEE8',
   },
   scrollContent: {
     padding: 20,
-    paddingBottom: 80,
+    paddingBottom: 90,
   },
-  headerWrap: {
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 18,
   },
-  kicker: {
-    color: '#6E8A7A',
+  brand: {
+    fontSize: 30,
     fontWeight: '700',
-    letterSpacing: 2,
+    color: '#243229',
+    letterSpacing: -1,
+  },
+  subBrand: {
+    fontSize: 13,
+    color: '#6B7B74',
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
-    fontSize: 12,
-    marginBottom: 8,
+    marginTop: 4,
   },
-  title: {
-    fontSize: 32,
+  privatePill: {
+    backgroundColor: '#E7F1EC',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#D3E4D8',
+  },
+  privateText: {
+    color: '#385F4C',
+    fontSize: 11,
     fontWeight: '700',
-    color: '#1F2A2B',
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#5F6866',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   heroCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    backgroundColor: '#F8F5F2',
-    borderRadius: 24,
+    backgroundColor: '#F9F6F3',
+    borderRadius: 26,
     padding: 18,
-    marginBottom: 18,
     borderWidth: 1,
-    borderColor: '#E7DFD8',
+    borderColor: '#E4DCD3',
+    marginBottom: 18,
   },
-  moodBubble: {
-    width: 62,
-    height: 62,
-    borderRadius: 20,
-    backgroundColor: '#DDEBE3',
-    justifyContent: 'center',
+  moodCircle: {
+    width: 70,
+    height: 70,
+    borderRadius: 22,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
   },
   moodEmoji: {
-    fontSize: 28,
+    fontSize: 30,
   },
-  heroMeta: {
+  heroTextWrap: {
     flex: 1,
   },
   heroLabel: {
-    color: '#6F726D',
-    fontSize: 12,
+    color: '#69756F',
     textTransform: 'uppercase',
     letterSpacing: 1.2,
+    fontSize: 11,
   },
   heroMood: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '700',
-    color: '#1F2A2B',
+    color: '#243229',
     marginTop: 4,
   },
   heroSummary: {
-    fontSize: 14,
-    color: '#5E6765',
     marginTop: 6,
+    color: '#53615D',
+    fontSize: 14,
     lineHeight: 20,
   },
   card: {
-    backgroundColor: '#FFFDFB',
+    backgroundColor: '#fffdfb',
     borderRadius: 22,
-    borderWidth: 1,
-    borderColor: '#EDE4DC',
     padding: 16,
+    borderWidth: 1,
+    borderColor: '#E7DFD8',
     marginBottom: 18,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1F2A2B',
+    color: '#243229',
     marginBottom: 12,
   },
-  moodsGrid: {
+  metaBadge: {
+    fontSize: 11,
+    color: '#48675D',
+    backgroundColor: '#EAF3EF',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    overflow: 'hidden',
+    fontWeight: '700',
+  },
+  moodGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    justifyContent: 'space-between',
   },
   moodOption: {
-    width: '30%',
-    minWidth: 90,
-    paddingVertical: 12,
-    paddingHorizontal: 10,
+    width: '31%',
+    minWidth: 96,
+    paddingVertical: 14,
+    backgroundColor: '#F4F0ED',
     borderRadius: 16,
-    backgroundColor: '#F2EDE8',
     alignItems: 'center',
-    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E9DFD8',
+    borderColor: '#E3D9D1',
+    marginBottom: 10,
   },
   moodChoiceEmoji: {
     fontSize: 24,
     marginBottom: 6,
   },
   moodChoiceLabel: {
-    fontSize: 13,
-    color: '#2D3635',
+    color: '#2C3532',
     fontWeight: '600',
+    fontSize: 13,
   },
   metricRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 8,
+    marginTop: 10,
   },
   metricLabel: {
-    fontSize: 15,
-    color: '#46504E',
+    color: '#45524D',
     fontWeight: '600',
+    fontSize: 15,
   },
   metricControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
   },
   stepButton: {
-    width: 30,
-    height: 30,
+    width: 28,
+    height: 28,
     borderRadius: 10,
     backgroundColor: '#EFE5DE',
     justifyContent: 'center',
     alignItems: 'center',
+    marginHorizontal: 8,
   },
   metricValue: {
-    minWidth: 48,
-    textAlign: 'center',
-    color: '#1F2A2B',
     fontWeight: '700',
+    color: '#1E2A28',
+    minWidth: 52,
+    textAlign: 'center',
   },
   progressTrack: {
     height: 12,
-    backgroundColor: '#EEE7E0',
+    backgroundColor: '#F0EAE3',
     borderRadius: 999,
     overflow: 'hidden',
     marginTop: 10,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   progressFill: {
     height: '100%',
     borderRadius: 999,
   },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  streakText: {
-    fontSize: 12,
-    color: '#6A796F',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
   routineItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#F7F1EB',
+    backgroundColor: '#F7F1EC',
     borderRadius: 14,
     padding: 12,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#E9DFD7',
+    borderColor: '#EADFD6',
   },
-  routineCompleted: {
-    backgroundColor: '#E8F3EE',
+  routineDoneItem: {
+    backgroundColor: '#E7F3EE',
+    borderColor: '#D4E7DD',
   },
   checkCircle: {
     width: 22,
     height: 22,
     borderRadius: 11,
     borderWidth: 1.5,
-    borderColor: '#A9A29B',
+    borderColor: '#B0A59D',
+    marginRight: 12,
   },
   checkCircleDone: {
-    backgroundColor: '#6BAA91',
-    borderColor: '#6BAA91',
+    borderColor: '#5F8E7A',
+    backgroundColor: '#5F8E7A',
     justifyContent: 'center',
     alignItems: 'center',
   },
   checkMark: {
-    color: '#FFF',
+    color: '#fff',
     fontSize: 12,
     fontWeight: '800',
   },
   routineText: {
+    color: '#2B342F',
     fontSize: 15,
-    color: '#2E312F',
   },
   routineTextDone: {
+    color: '#6F7C76',
     textDecorationLine: 'line-through',
-    color: '#6E7E79',
   },
   input: {
-    minHeight: 110,
+    minHeight: 120,
     backgroundColor: '#F7F2EF',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E7DBD2',
+    borderColor: '#E7DDD5',
     padding: 14,
-    textAlignVertical: 'top',
-    color: '#1F2A2B',
+    color: '#1E2A28',
     fontSize: 15,
+    textAlignVertical: 'top',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: '#F9F4F1',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#EADFD7',
+    marginRight: 10,
+  },
+  statLabel: {
+    color: '#68756F',
+    fontSize: 11,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#243229',
   },
   primaryButton: {
-    backgroundColor: '#304B43',
+    backgroundColor: '#2F4D45',
     borderRadius: 18,
     paddingVertical: 16,
     alignItems: 'center',
@@ -449,8 +522,8 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: '#fff',
-    fontWeight: '700',
     fontSize: 16,
+    fontWeight: '700',
   },
 });
 
